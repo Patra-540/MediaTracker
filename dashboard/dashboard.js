@@ -741,14 +741,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
   }
 
-  function formatDateToYYMMDD(dateStr) {
+  function formatDateToYYYYMD(dateStr) {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
     if (parts.length === 3) {
-      const yy = parts[0].slice(-2);
-      const mm = parts[1];
-      const dd = parts[2];
-      return `${yy}/${mm}/${dd}`;
+      const yyyy = parts[0];
+      const m = parseInt(parts[1], 10).toString();
+      const d = parseInt(parts[2], 10).toString();
+      return `${yyyy}/${m}/${d}`;
     }
     return dateStr;
   }
@@ -757,35 +757,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     const textInput = document.getElementById(textInputId);
     const picker = document.getElementById(pickerId);
     if (textInput && picker) {
+      const setDefaultDate = () => {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        picker.value = `${yyyy}-${mm}-${dd}`;
+      };
+
       const syncValue = () => {
         try {
           const val = textInput.value.trim();
-          const match = val.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+          if (!val) {
+            setDefaultDate();
+            return;
+          }
+          // Match YYYY/M/D, YY/M/D, YYYY-M-D, YY-M-D
+          const match = val.match(/^(\d{2,4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
           if (match) {
-            const yyyy = '20' + match[1];
-            const mm = match[2];
-            const dd = match[3];
-            picker.value = `${yyyy}-${mm}-${dd}`;
+            let y = match[1];
+            if (y.length === 2) {
+              y = '20' + y;
+            }
+            const m = match[2].padStart(2, '0');
+            const d = match[3].padStart(2, '0');
+            picker.value = `${y}-${m}-${d}`;
           } else {
-            const match4 = val.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
-            if (match4) {
-              picker.value = `${match4[1]}-${match4[2]}-${match4[3]}`;
+            const date = new Date(val);
+            if (!isNaN(date.getTime())) {
+              const y = date.getFullYear();
+              const m = String(date.getMonth() + 1).padStart(2, '0');
+              const d = String(date.getDate()).padStart(2, '0');
+              picker.value = `${y}-${m}-${d}`;
             } else {
-              const today = new Date();
-              const yyyy = today.getFullYear();
-              const mm = String(today.getMonth() + 1).padStart(2, '0');
-              const dd = String(today.getDate()).padStart(2, '0');
-              picker.value = `${yyyy}-${mm}-${dd}`;
+              setDefaultDate();
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          setDefaultDate();
+        }
       };
 
       picker.addEventListener('mousedown', syncValue);
       picker.addEventListener('focus', syncValue);
 
+      // Force calendar popup to show even if left side of picker is clicked
+      picker.addEventListener('click', (e) => {
+        try {
+          picker.showPicker();
+        } catch (err) {}
+      });
+
       const updateText = () => {
-        textInput.value = formatDateToYYMMDD(picker.value);
+        textInput.value = formatDateToYYYYMD(picker.value);
         textInput.dispatchEvent(new Event('input', { bubbles: true }));
       };
       picker.onchange = updateText;
