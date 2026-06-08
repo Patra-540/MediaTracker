@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "MediaTracker",
+  "version": "1.0",
+  "description": "自動記錄喜好的作品與追蹤進度",
+  "permissions": ["storage"],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon.png",
+      "48": "icons/icon.png",
+      "128": "icons/icon.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon.png",
+    "48": "icons/icon.png",
+    "128": "icons/icon.png"
+  }
+}

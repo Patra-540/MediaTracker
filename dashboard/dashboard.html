@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediaTracker - 管理作品</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body class="font-size-md">
+  <div id="app">
+    <header>
+      <h1>MediaTracker 管理面板</h1>
+      <div class="actions">
+        <div class="action-row">
+          <div class="font-controls" style="display: flex; gap: 8px; width: 75px; justify-content: flex-start;">
+            <button id="fontSizeDown" style="flex: 1;">A-</button>
+            <button id="fontSizeUp" style="flex: 1;">A+</button>
+          </div>
+          <button id="mediumManageBtn">載體管理</button>
+          <button id="expandAllBtn">全部展開</button>
+          <button id="exportAllBtn">匯出資料</button>
+        </div>
+        <div class="action-row">
+          <div class="spacer" style="width: 75px;"></div>
+          <button id="tagManageBtn">Tag 管理</button>
+          <button id="collapseAllBtn">全部摺疊</button>
+          <button id="importBtn">匯入資料</button>
+          <input type="file" id="importInput" style="display: none;" accept=".json">
+        </div>
+      </div>
+    </header>
+
+    <button id="addEntryBtn" title="新增作品">+</button>
+
+    <div id="main-layout">
+      <aside id="sidebar">
+        <h3 id="toc-header">
+          <span>作品目錄</span>
+          <span id="entry-count">0</span>
+        </h3>
+        <div id="toc-list"></div>
+      </aside>
+      
+      <main id="content-area">
+        <!-- 常用網址 (可折疊) -->
+        <section class="collapsible-section">
+          <button class="collapsible-header" id="toggleCommonUrls">
+            <span>常用網址</span>
+            <span class="collapse-icon">▼</span>
+          </button>
+          <div class="collapsible-content" id="commonUrlsArea">
+            <table class="common-urls-table">
+              <thead>
+                <tr>
+                  <th>Novel</th>
+                  <th>Comic</th>
+                  <th>Anime</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td id="common-novel-list"></td>
+                  <td id="common-comic-list"></td>
+                  <td id="common-anime-list"></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="domain-map-actions">
+              <button id="editCommonUrlsBtn">編輯常用網址與網域對照</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 篩選區域 -->
+        <section class="filter-section">
+          <h3>篩選</h3>
+          <div class="filter-group">
+            <strong>原作載體：</strong>
+            <div id="filter-mediums-list" class="filter-items"></div>
+          </div>
+          <div class="filter-group">
+            <strong>作品類型：</strong>
+            <div class="filter-items">
+              <label><input type="checkbox" class="filter-type" value="Novel"> Novel</label>
+              <label><input type="checkbox" class="filter-type" value="Comic"> Comic</label>
+              <label><input type="checkbox" class="filter-type" value="Anime"> Anime</label>
+            </div>
+          </div>
+          <div class="filter-group">
+            <strong>Tag：</strong>
+            <div id="filter-tags-list" class="filter-items"></div>
+          </div>
+          <div class="filter-actions">
+            <button id="searchBtn">搜尋</button>
+            <button id="clearFilterBtn">清空條件</button>
+          </div>
+        </section>
+
+        <div id="entryList">
+          <!-- 作品清單將顯示在此 -->
+        </div>
+      </main>
+    </div>
+
+    <!-- 全域管理 Modal (標籤/載體) -->
+    <div id="manageModal" class="modal">
+      <div class="modal-content">
+        <span class="close-manage">&times;</span>
+        <h2 id="manageModalTitle">管理</h2>
+        <div style="margin-bottom: 10px;">
+          <button id="addManageItemBtn">+ 新增項目</button>
+        </div>
+        <div id="manage-list-container"></div>
+        <div class="form-actions" style="margin-top:20px">
+          <button id="saveManageBtn">儲存變更</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 作品編輯 Modal -->
+    <div id="modal" class="modal">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <div id="modal-body">
+          <form id="entryForm">
+            <input type="hidden" id="editId">
+            <div class="form-group">
+              <label>作品標題：</label>
+              <input type="text" id="f-title" required>
+            </div>
+            
+            <div class="row">
+               <div class="form-group">
+                 <label>觀看開始時間 (YY/MM/DD)：</label>
+                 <input type="text" id="f-watch-start" placeholder="YY/MM/DD">
+               </div>
+               <div class="form-group">
+                 <label>觀看結束時間 (YY/MM/DD)：</label>
+                 <input type="text" id="f-watch-end" placeholder="YY/MM/DD">
+               </div>
+            </div>
+
+            <!-- 統一管理介面 -->
+            <div class="media-category-group" data-media="novel">
+               <h3>基本資訊 - Novel</h3>
+               <div class="progress-section">
+                 <label>進度列表：</label>
+                 <div class="progress-items"></div>
+                 <button type="button" class="add-progress-btn">+ 新增 Novel 進度</button>
+               </div>
+               <div class="url-section">
+                 <label>URL 列表：</label>
+                 <div class="url-items"></div>
+                 <button type="button" class="add-url-complex-btn">+ 新增 Novel URL</button>
+               </div>
+            </div>
+
+            <div class="media-category-group" data-media="comic">
+               <h3>基本資訊 - Comic</h3>
+               <div class="progress-section">
+                 <label>進度列表：</label>
+                 <div class="progress-items"></div>
+                 <button type="button" class="add-progress-btn">+ 新增 Comic 進度</button>
+               </div>
+               <div class="url-section">
+                 <label>URL 列表：</label>
+                 <div class="url-items"></div>
+                 <button type="button" class="add-url-complex-btn">+ 新增 Comic URL</button>
+               </div>
+            </div>
+
+            <div class="media-category-group" data-media="anime">
+               <h3>基本資訊 - Anime</h3>
+               <div class="progress-section">
+                 <label>進度列表：</label>
+                 <div class="progress-items"></div>
+                 <button type="button" class="add-progress-btn">+ 新增 Anime 進度</button>
+               </div>
+               <div class="url-section">
+                 <label>URL 列表：</label>
+                 <div class="url-items"></div>
+                 <button type="button" class="add-url-complex-btn">+ 新增 Anime URL</button>
+               </div>
+            </div>
+
+            <h3>標籤與其他</h3>
+            <div class="form-group">
+              <label>原作載體：</label>
+              <div class="row">
+                <input type="text" id="f-orig-medium" placeholder="輸入或選取載體">
+              </div>
+              <div id="available-mediums" class="tag-cloud"></div>
+            </div>
+            
+            <div class="form-group tag-manager">
+              <label>Tag：</label>
+              <div id="f-tags-inputs"></div>
+              <button type="button" id="addTagBtn">+ 新增 Tag</button>
+              <div id="available-tags" class="tag-cloud"></div>
+            </div>
+
+            <div class="form-group other-names-manager">
+              <label>其他名稱：</label>
+              <div id="other-names-inputs"></div>
+              <button type="button" id="addOtherNameBtn">+ 新增其他名稱</button>
+            </div>
+
+            <div class="form-group">
+              <label>相關作品：</label>
+              <textarea id="f-related"></textarea>
+            </div>
+            <div class="form-group">
+              <label>筆記：</label>
+              <textarea id="f-notes"></textarea>
+            </div>
+            <div class="form-group">
+              <label>心得：</label>
+              <textarea id="f-thoughts"></textarea>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" id="saveBtn">儲存</button>
+              <button type="button" id="cancelBtn">取消</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- 常用網址編輯 Modal -->
+    <div id="commonUrlsModal" class="modal">
+      <div class="modal-content">
+        <span class="close-common">&times;</span>
+        <h2>編輯常用網址與網域對照</h2>
+        <div id="common-urls-container">
+           <section>
+             <h3>NOVEL 常用網址</h3>
+             <div id="common-novel-editor" class="common-editor-group"></div>
+             <button type="button" class="add-common-btn" data-type="novel">+ 新增 NOVEL 常用網址</button>
+           </section>
+           <section>
+             <h3>COMIC 常用網址</h3>
+             <div id="common-comic-editor" class="common-editor-group"></div>
+             <button type="button" class="add-common-btn" data-type="comic">+ 新增 COMIC 常用網址</button>
+           </section>
+           <section>
+             <h3>ANIME 常用網址</h3>
+             <div id="common-anime-editor" class="common-editor-group"></div>
+             <button type="button" class="add-common-btn" data-type="anime">+ 新增 ANIME 常用網址</button>
+           </section>
+        </div>
+        <div class="form-actions">
+          <button id="saveCommonBtn">儲存所有設定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Datalists -->
+    <datalist id="novel-prog-desc"><option value="文庫"><option value="Web 翻譯"><option value="Web 原作"></datalist>
+    <datalist id="comic-prog-desc"><option value="第 N 話"><option value="單行本"><option value="番外篇"></datalist>
+    <datalist id="anime-prog-desc"><option value="第 N 季"><option value="第 N 集"><option value="番外篇"><option value="電影"></datalist>
+
+    <datalist id="novel-url-desc"><option value="文庫"><option value="Web 翻譯"><option value="Web 原作"></datalist>
+    <datalist id="comic-url-desc"><option value="漫畫"><option value="番外篇"></datalist>
+    <datalist id="anime-url-desc"><option value="動畫"><option value="番外篇"><option value="電影"></datalist>
+  </div>
+
+  <template id="entryTemplate">
+    <section class="entry" draggable="true">
+      <div class="entry-header">
+        <div class="header-left">
+          <span class="drag-handle">⠿</span>
+          <button class="toggle-entry-btn">▼</button>
+          <h1 class="entry-title">作品標題</h1>
+        </div>
+        <div class="entry-actions">
+           <button class="edit-btn">編輯</button>
+           <button class="delete-btn">刪除</button>
+        </div>
+      </div>
+      
+      <div class="entry-basic-info">
+        <div class="meta-line">
+           <strong>原作載體：</strong> <span class="original-medium"></span>
+           <span class="tags-spacer"></span>
+           <strong>Tags：</strong> <div class="entry-tags" style="display:inline-flex"></div>
+        </div>
+        <div class="watch-time-line">
+           <strong>觀看時間：</strong> <span class="watch-period"></span>
+        </div>
+        <div class="other-names-line">
+           <strong>其他名稱：</strong>
+           <div class="other-names-list"></div>
+        </div>
+      </div>
+
+      <table class="info-table">
+        <thead>
+          <tr>
+            <th class="label-col"></th>
+            <th>Novel</th>
+            <th>Comic</th>
+            <th>Anime</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="label-col">觀看進度</td>
+            <td class="novel-progress progress-col"></td>
+            <td class="comic-progress progress-col"></td>
+            <td class="anime-progress progress-col"></td>
+          </tr>
+          <tr>
+            <td class="label-col">URL</td>
+            <td class="novel-urls url-col"></td>
+            <td class="comic-urls url-col"></td>
+            <td class="anime-urls url-col"></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="details-grid">
+        <div><h3>相關作品</h3><div class="related-works"></div></div>
+        <div><h3>筆記</h3><div class="notes"></div></div>
+        <div><h3>心得</h3><div class="thoughts"></div></div>
+      </div>
+    </section>
+  </template>
+
+  <script src="../js/storage.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>
