@@ -466,6 +466,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('f-title').value = entry.title;
     document.getElementById('f-watch-start').value = (entry.watchingTime && entry.watchingTime.start) || '';
     document.getElementById('f-watch-end').value = (entry.watchingTime && entry.watchingTime.end) || '';
+    document.getElementById('f-watch-start').dispatchEvent(new Event('input'));
+    document.getElementById('f-watch-end').dispatchEvent(new Event('input'));
     document.getElementById('f-orig-medium').value = entry.originalMedium || '';
     document.querySelectorAll('.progress-items, .url-items, #other-names-inputs, #f-tags-inputs').forEach(c => c.innerHTML = '');
     (Array.isArray(entry.otherNames) ? entry.otherNames : (entry.otherNames ? [entry.otherNames] : [])).forEach(n => addOtherNameInput(n));
@@ -558,6 +560,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     addEntryBtn.onclick = () => {
       entryForm.reset(); document.getElementById('editId').value = '';
       document.querySelectorAll('.progress-items, .url-items, #other-names-inputs, #f-tags-inputs').forEach(c => c.innerHTML = '');
+      document.getElementById('f-watch-start').dispatchEvent(new Event('input'));
+      document.getElementById('f-watch-end').dispatchEvent(new Event('input'));
       renderEditFormDynamicFields();
       openModal();
     };
@@ -798,8 +802,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       };
 
-      picker.addEventListener('mousedown', syncValue);
-      picker.addEventListener('focus', syncValue);
+      // Listen for text input changes to update the date picker in real-time
+      textInput.addEventListener('input', syncValue);
+      // Run once initially
+      syncValue();
 
       // Force calendar popup to show even if left side of picker is clicked
       picker.addEventListener('click', (e) => {
