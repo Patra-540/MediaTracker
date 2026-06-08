@@ -132,11 +132,23 @@
             <div class="row">
                <div class="form-group">
                  <label>觀看開始時間 (YY/MM/DD)：</label>
-                 <input type="text" id="f-watch-start" placeholder="YY/MM/DD">
+                 <div class="date-input-wrapper">
+                   <input type="text" id="f-watch-start" placeholder="YY/MM/DD">
+                   <div class="date-picker-container">
+                     <span class="date-picker-icon">📅</span>
+                     <input type="date" id="f-watch-start-picker" class="hidden-date-picker">
+                   </div>
+                 </div>
                </div>
                <div class="form-group">
                  <label>觀看結束時間 (YY/MM/DD)：</label>
-                 <input type="text" id="f-watch-end" placeholder="YY/MM/DD">
+                 <div class="date-input-wrapper">
+                   <input type="text" id="f-watch-end" placeholder="YY/MM/DD">
+                   <div class="date-picker-container">
+                     <span class="date-picker-icon">📅</span>
+                     <input type="date" id="f-watch-end-picker" class="hidden-date-picker">
+                   </div>
+                 </div>
                </div>
             </div>
 
@@ -266,14 +278,16 @@
   </div>
 
   <template id="entryTemplate">
-    <section class="entry" draggable="true">
-      <div class="entry-header">
+    <section class="entry">
+      <div class="entry-header" draggable="true">
         <div class="header-left">
           <span class="drag-handle">⠿</span>
           <button class="toggle-entry-btn">▼</button>
           <h1 class="entry-title">作品標題</h1>
         </div>
         <div class="entry-actions">
+           <button class="move-up-btn" title="上移">▲</button>
+           <button class="move-down-btn" title="下移">▼</button>
            <button class="edit-btn">編輯</button>
            <button class="delete-btn">刪除</button>
         </div>

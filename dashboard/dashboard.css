@@ -664,3 +664,141 @@ input[type="text"] { width: 100%; padding: 10px; box-sizing: border-box; border:
 #cancelBtn:hover {
   background-color: #e8eaed;
 }
+
+/* Date input wrappers and pickers */
+.date-input-wrapper {
+  display: flex;
+  position: relative;
+  align-items: center;
+}
+
+.date-input-wrapper input[type="text"] {
+  flex: 1;
+  padding-right: 35px; /* Leave room for calendar container */
+}
+
+.date-picker-container {
+  position: absolute;
+  right: 5px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.date-picker-icon {
+  font-size: 1.2em;
+  pointer-events: none;
+}
+
+.hidden-date-picker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Entry action buttons styling */
+.entry-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.entry-actions button {
+  background-color: #f8f9fa;
+  color: #3c4043;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.90em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.entry-actions button:hover {
+  background-color: #e8eaed;
+  border-color: #bdc1c6;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.entry-actions button.delete-btn {
+  background-color: #fce8e6;
+  color: #c5221f;
+  border-color: #fad2cf;
+}
+
+.entry-actions button.delete-btn:hover {
+  background-color: #fbe5e2;
+  border-color: #f7b1ab;
+  box-shadow: 0 1px 3px rgba(197,34,31,0.1);
+}
+
+.entry-actions button.edit-btn {
+  background-color: #e8f0fe;
+  color: #1a73e8;
+  border-color: #d2e3fc;
+}
+
+.entry-actions button.edit-btn:hover {
+  background-color: #d9e8fc;
+  border-color: #aecbfa;
+  box-shadow: 0 1px 3px rgba(26,115,232,0.1);
+}
+
+.entry-actions button.move-up-btn,
+.entry-actions button.move-down-btn {
+  padding: 6px 10px;
+}
+
+/* Toast Success Message Styling */
+#toast-container {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  background-color: #323232;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Copy name visual clue styling */
+.entry-title {
+  cursor: pointer;
+}
+
+.entry-title:hover {
+  color: #1557b0 !important;
+  text-decoration: underline;
+}

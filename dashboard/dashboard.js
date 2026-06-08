@@ -132,6 +132,25 @@ function applyFontSize(size) {
   document.body.classList.add(`font-size-${size}`);
 }
 
+function showToast(message) {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  container.appendChild(toast);
+  toast.offsetHeight; // force reflow
+  toast.classList.add('show');
+  setTimeout(() => {
+    toast.classList.remove('show');
+    toast.addEventListener('transitionend', () => toast.remove());
+  }, 1500);
+}
+
 // === 4. DOM 載入後初始化 ===
 document.addEventListener('DOMContentLoaded', async () => {
   const entryList = document.getElementById('entryList');
@@ -258,6 +277,41 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (collapsedIds.has(safeEntry.id)) collapsedIds.delete(safeEntry.id); else collapsedIds.add(safeEntry.id);
           loadEntries();
       };
+      clone.querySelector('.move-up-btn').onclick = async () => {
+        const currentFilteredIdx = filtered.findIndex(e => e.id === safeEntry.id);
+        if (currentFilteredIdx > 0) {
+          const prevEntry = filtered[currentFilteredIdx - 1];
+          const targetIdx = allEntries.findIndex(e => e.id === safeEntry.id);
+          if (targetIdx !== -1) {
+            const [movedEntry] = allEntries.splice(targetIdx, 1);
+            const prevIdx = allEntries.findIndex(e => e.id === prevEntry.id);
+            allEntries.splice(prevIdx, 0, movedEntry);
+            await Storage.save(allEntries);
+            await loadEntries();
+          }
+        }
+      };
+      clone.querySelector('.move-down-btn').onclick = async () => {
+        const currentFilteredIdx = filtered.findIndex(e => e.id === safeEntry.id);
+        if (currentFilteredIdx !== -1 && currentFilteredIdx < filtered.length - 1) {
+          const nextEntry = filtered[currentFilteredIdx + 1];
+          const targetIdx = allEntries.findIndex(e => e.id === safeEntry.id);
+          if (targetIdx !== -1) {
+            const [movedEntry] = allEntries.splice(targetIdx, 1);
+            const nextIdx = allEntries.findIndex(e => e.id === nextEntry.id);
+            allEntries.splice(nextIdx + 1, 0, movedEntry);
+            await Storage.save(allEntries);
+            await loadEntries();
+          }
+        }
+      };
+      clone.querySelector('.entry-title').onclick = () => {
+        navigator.clipboard.writeText(safeEntry.title).then(() => {
+          showToast('已複製作品名稱！');
+        }).catch(err => {
+          console.error('Failed to copy text: ', err);
+        });
+      };
       clone.querySelector('.edit-btn').onclick = () => editEntry(safeEntry);
       clone.querySelector('.delete-btn').onclick = async () => { if (confirm('確定要刪除嗎？')) { await Storage.delete(safeEntry.id); await loadEntries(); renderFilters(); } };
       entryList.appendChild(clone);
@@ -347,6 +401,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       allEntries.forEach(e => { if (type === 'tag') (e.tags || []).forEach(t => items.add(t)); else if (e.originalMedium) items.add(e.originalMedium); });
       Array.from(items).sort().forEach(item => addManageItemRow(item, item));
       manageModal.style.display = 'block';
+      const content = manageModal.querySelector('.modal-content');
+      if (content) content.scrollTop = 0;
   }
 
   function addManageItemRow(val, oldVal) {
@@ -391,6 +447,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function openModal() {
       modal.style.display = 'block';
+      const content = modal.querySelector('.modal-content');
+      if (content) content.scrollTop = 0;
       document.body.classList.add('modal-open');
       initialFormState = getFormState();
   }
@@ -455,6 +513,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         (commonUrls[m] || []).forEach(u => addCommonUrlRow(container, u.url, u.name, u.visible !== false));
       });
       commonUrlsModal.style.display = 'block';
+      const content = commonUrlsModal.querySelector('.modal-content');
+      if (content) content.scrollTop = 0;
     };
     saveCommonBtn.onclick = async () => {
       ['novel', 'comic', 'anime'].forEach(m => {
@@ -514,7 +574,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     let draggedItem = null;
-    entryList.addEventListener('dragstart', (e) => { draggedItem = e.target.closest('.entry'); if (draggedItem) { draggedItem.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; } });
+    entryList.addEventListener('dragstart', (e) => {
+      const header = e.target.closest('.entry-header');
+      if (header) {
+        draggedItem = header.closest('.entry');
+        if (draggedItem) {
+          draggedItem.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        }
+      } else {
+        e.preventDefault();
+      }
+    });
     entryList.addEventListener('dragend', async (e) => {
       if (draggedItem) {
         draggedItem.classList.remove('dragging');
@@ -669,6 +740,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) { console.error("Initialization error:", e); }
     setupEventListeners();
   }
+
+  function formatDateToYYMMDD(dateStr) {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const yy = parts[0].slice(-2);
+      const mm = parts[1];
+      const dd = parts[2];
+      return `${yy}/${mm}/${dd}`;
+    }
+    return dateStr;
+  }
+
+  const setupDatePicker = (textInputId, pickerId) => {
+    const textInput = document.getElementById(textInputId);
+    const picker = document.getElementById(pickerId);
+    if (textInput && picker) {
+      const syncValue = () => {
+        try {
+          const val = textInput.value.trim();
+          const match = val.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+          if (match) {
+            const yyyy = '20' + match[1];
+            const mm = match[2];
+            const dd = match[3];
+            picker.value = `${yyyy}-${mm}-${dd}`;
+          } else {
+            const match4 = val.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+            if (match4) {
+              picker.value = `${match4[1]}-${match4[2]}-${match4[3]}`;
+            } else {
+              const today = new Date();
+              const yyyy = today.getFullYear();
+              const mm = String(today.getMonth() + 1).padStart(2, '0');
+              const dd = String(today.getDate()).padStart(2, '0');
+              picker.value = `${yyyy}-${mm}-${dd}`;
+            }
+          }
+        } catch (e) {}
+      };
+
+      picker.addEventListener('mousedown', syncValue);
+      picker.addEventListener('focus', syncValue);
+
+      const updateText = () => {
+        textInput.value = formatDateToYYMMDD(picker.value);
+        textInput.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      picker.onchange = updateText;
+      picker.oninput = updateText;
+    }
+  };
+
+  setupDatePicker('f-watch-start', 'f-watch-start-picker');
+  setupDatePicker('f-watch-end', 'f-watch-end-picker');
 
   await init();
 });
