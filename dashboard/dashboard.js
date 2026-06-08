@@ -233,7 +233,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           sortedP.forEach(p => {
             const li = document.createElement('li');
             if (p.desc === '第 N 話') li.innerHTML = formatDisplay(`第 ${p.val} 話`);
-            else if (p.desc === '第 N 季') { const parts = p.val.split(','); li.innerHTML = formatDisplay(`第 ${parts[0] || '?'} 季${parts[1] ? ' ' + parts[1] + ' 集' : ''}`); }
+            else if (p.desc === '第 N 季') { const parts = p.val.split(','); li.innerHTML = formatDisplay(`第 ${parts[0] || '?'} 季${parts[1] ? ' 第 ' + parts[1] + ' 集' : ''}`); }
             else li.innerHTML = formatDisplay(p.desc + (p.val ? '：' + p.val : ''));
             ul.appendChild(li);
           });
@@ -291,6 +291,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     sortedMediums.forEach(m => {
         const label = document.createElement('label'); const checked = activeFilters.mediums.includes(m);
         label.innerHTML = `<input type="checkbox" class="filter-medium" value="${m}" ${checked ? 'checked' : ''}> ${m}`;
+        label.querySelector('input').onchange = () => {
+            activeFilters.mediums = Array.from(document.querySelectorAll('.filter-medium:checked')).map(cb => cb.value);
+        };
         mediumFilterContainer.appendChild(label);
     });
     const filterContainer = document.getElementById('filter-tags-list'); filterContainer.innerHTML = '';
@@ -434,6 +437,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       activeFilters.types = Array.from(document.querySelectorAll('.filter-type:checked')).map(cb => cb.value);
       loadEntries();
     };
+    document.querySelectorAll('.filter-type').forEach(cb => {
+      cb.onchange = () => {
+        activeFilters.types = Array.from(document.querySelectorAll('.filter-type:checked')).map(cb => cb.value);
+      };
+    });
     clearFilterBtn.onclick = () => {
       document.querySelectorAll('.filter-section input[type="checkbox"]').forEach(cb => cb.checked = false);
       activeFilters = { mediums: [], types: [], tags: [] };
@@ -533,6 +541,35 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
     entryList.addEventListener('dragover', (e) => { e.preventDefault(); const afterElement = getDragAfterElement(entryList, e.clientY, '.entry'); if (afterElement == null) entryList.appendChild(draggedItem); else entryList.insertBefore(draggedItem, afterElement); });
+
+    let draggedCommonItem = null;
+    ['novel', 'comic', 'anime'].forEach(m => {
+      const container = document.getElementById(`common-${m}-editor`);
+      container.addEventListener('dragstart', (e) => {
+        draggedCommonItem = e.target.closest('.common-url-row');
+        if (draggedCommonItem) {
+          draggedCommonItem.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        }
+      });
+      container.addEventListener('dragend', (e) => {
+        if (draggedCommonItem) {
+          draggedCommonItem.classList.remove('dragging');
+          draggedCommonItem = null;
+        }
+      });
+      container.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!draggedCommonItem) return;
+        if (draggedCommonItem.parentNode !== container) return;
+        const afterElement = getDragAfterElement(container, e.clientY, '.common-url-row');
+        if (afterElement == null) {
+          container.appendChild(draggedCommonItem);
+        } else {
+          container.insertBefore(draggedCommonItem, afterElement);
+        }
+      });
+    });
   }
 
   function addProgressInputRow(container, category, desc, val) {
