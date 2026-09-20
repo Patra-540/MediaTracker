@@ -19,6 +19,45 @@ let currentFontSize = 'md';
 let currentFirstVisibleId = null;
 const intersectingIds = new Set();
 let initialFormState = ''; // 紀錄表單開啟時的狀態
+let bookmarks = [];
+let visibleTOCEntries = [];
+let draggedBookmarkId = null;
+let savingBookmarks = false;
+
+function buildTOCRows(entries, visibleEntries, markers) {
+  const visibleIds = new Set(visibleEntries.map(entry => entry.id));
+  const entryIds = new Set(entries.map(entry => entry.id));
+  const rows = [];
+  entries.forEach(entry => {
+    markers.filter(marker => marker.beforeEntryId === entry.id)
+      .forEach(marker => rows.push({ kind: 'bookmark', item: marker }));
+    if (visibleIds.has(entry.id)) rows.push({ kind: 'entry', item: entry });
+  });
+  markers.filter(marker => !entryIds.has(marker.beforeEntryId))
+    .forEach(marker => rows.push({ kind: 'bookmark', item: marker }));
+  return rows;
+}
+
+function moveBookmark(markers, id, nextRow) {
+  const moving = markers.find(marker => marker.id === id);
+  if (!moving || (nextRow?.kind === 'bookmark' && nextRow.item.id === id)) return markers;
+  const result = markers.filter(marker => marker.id !== id);
+  const beforeEntryId = nextRow ? (nextRow.kind === 'entry' ? nextRow.item.id : nextRow.item.beforeEntryId) : null;
+  const index = nextRow?.kind === 'bookmark' ? result.findIndex(marker => marker.id === nextRow.item.id) : -1;
+  result.splice(index < 0 ? result.length : index, 0, { ...moving, beforeEntryId });
+  return result;
+}
+
+function getBookmarkEdges(markers, viewportTop, viewportBottom) {
+  let top = null;
+  let bottom = null;
+  for (const marker of markers) {
+    // 部分可見的書籤仍留在原處，完全離開才顯示固定提示。
+    if (marker.bottom <= viewportTop) top = marker.id;
+    else if (marker.top >= viewportBottom && bottom === null) bottom = marker.id;
+  }
+  return { top, bottom };
+}
 
 // === 3. 工具函式 ===
 function getDomain(urlStr) {
@@ -175,6 +214,68 @@ document.addEventListener('DOMContentLoaded', async () => {
   const expandAllBtn = document.getElementById('expandAllBtn');
   const collapseAllBtn = document.getElementById('collapseAllBtn');
   const tocList = document.getElementById('toc-list');
+  const bookmarkTop = document.getElementById('bookmark-top');
+  const bookmarkBottom = document.getElementById('bookmark-bottom');
+  let bookmarkEdgeFrame = null;
+
+  function updateBookmarkEdges() {
+    const sidebar = document.getElementById('sidebar');
+    // 頁首會把目錄起點往下推，不能只用整個視窗高度限制目錄。
+    const availableHeight = Math.max(0, window.innerHeight - Math.max(20, sidebar.getBoundingClientRect().top) - 20);
+    const heightValue = `${availableHeight}px`;
+    if (sidebar.style.getPropertyValue('--sidebar-available-height') !== heightValue) {
+      sidebar.style.setProperty('--sidebar-available-height', heightValue);
+    }
+    const rows = Array.from(tocList.querySelectorAll('.toc-bookmark'));
+    // 上方沒有捲出的書籤時收起整列，避免清單頂部留下空白。
+    const previousViewportTop = tocList.getBoundingClientRect().top + tocList.clientTop;
+    document.getElementById('bookmark-top-slot').hidden = !rows.some(row =>
+      row.getBoundingClientRect().bottom <= previousViewportTop);
+    document.getElementById('bookmark-bottom-slot').hidden = rows.length === 0;
+    // 上方提示可能改變清單高度，以下方提示的最新可視邊界重新判斷。
+    const rect = tocList.getBoundingClientRect();
+    const viewportTop = rect.top + tocList.clientTop;
+    const edges = getBookmarkEdges(rows.map(row => {
+      const bounds = row.getBoundingClientRect();
+      return { id: row.dataset.bookmarkId, top: bounds.top, bottom: bounds.bottom };
+    }), viewportTop, viewportTop + tocList.clientHeight);
+    [[bookmarkTop, edges.top, '↑'], [bookmarkBottom, edges.bottom, '↓']].forEach(([button, id, arrow]) => {
+      const marker = bookmarks.find(item => item.id === id);
+      button.hidden = !marker;
+      if (!marker) {
+        delete button.dataset.bookmarkId;
+        button.textContent = '';
+        button.removeAttribute('title');
+        button.removeAttribute('aria-label');
+        return;
+      }
+      button.dataset.bookmarkId = id;
+      button.textContent = `${arrow} ${marker.name}`;
+      button.title = `捲動到書籤：${marker.name}`;
+      button.setAttribute('aria-label', button.title);
+    });
+  }
+
+  function scheduleBookmarkEdges() {
+    if (bookmarkEdgeFrame !== null) return;
+    bookmarkEdgeFrame = requestAnimationFrame(() => {
+      bookmarkEdgeFrame = null;
+      updateBookmarkEdges();
+    });
+  }
+
+  function scrollToBookmark(button) {
+    const row = Array.from(tocList.querySelectorAll('.toc-bookmark'))
+      .find(item => item.dataset.bookmarkId === button.dataset.bookmarkId);
+    if (!row) return;
+    const rect = tocList.getBoundingClientRect();
+    const bounds = row.getBoundingClientRect();
+    tocList.scrollTo({
+      top: tocList.scrollTop + bounds.top - rect.top - tocList.clientTop
+        - Math.max(0, (tocList.clientHeight - bounds.height) / 2),
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'
+    });
+  }
   const entryCountEl = document.getElementById('entry-count');
   const tagManageBtn = document.getElementById('tagManageBtn');
   const mediumManageBtn = document.getElementById('mediumManageBtn');
@@ -323,14 +424,90 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderTOC(filtered);
   }
 
+  async function commitBookmarks(next) {
+      if (savingBookmarks) return;
+      savingBookmarks = true;
+      try {
+          await Storage.saveBookmarks(next);
+          bookmarks = next;
+          renderTOC(visibleTOCEntries);
+      } catch (error) {
+          console.error('Bookmark save failed:', error);
+          showToast('書籤儲存失敗，請重試');
+      } finally {
+          savingBookmarks = false;
+      }
+  }
+
   function renderTOC(entries = []) {
+      visibleTOCEntries = entries;
+      draggedBookmarkId = null;
+      const scrollTop = tocList.scrollTop;
       tocList.innerHTML = '';
-      entries.forEach(e => {
+      buildTOCRows(allEntries, entries, bookmarks).forEach(row => {
+          const e = row.item;
+          if (row.kind === 'bookmark') {
+              const marker = document.createElement('div');
+              marker.className = 'toc-bookmark';
+              marker.dataset.bookmarkId = e.id;
+              marker.draggable = true;
+              const handle = document.createElement('span');
+              handle.className = 'bookmark-handle'; handle.textContent = '⠿'; handle.title = '拖曳書籤位置';
+              const name = document.createElement('span');
+              name.className = 'bookmark-name'; name.textContent = e.name; name.title = e.name;
+              const rename = document.createElement('button');
+              rename.type = 'button'; rename.textContent = '✎'; rename.title = '重新命名書籤';
+              rename.setAttribute('aria-label', `重新命名書籤：${e.name}`);
+              rename.onclick = () => {
+                  if (savingBookmarks) return;
+                  const value = prompt('書籤名稱', e.name);
+                  if (value?.trim()) commitBookmarks(bookmarks.map(marker => marker.id === e.id ? { ...marker, name: value.trim() } : marker));
+              };
+              const remove = document.createElement('button');
+              remove.type = 'button'; remove.textContent = '×'; remove.title = '刪除書籤';
+              remove.setAttribute('aria-label', `刪除書籤：${e.name}`);
+              remove.onclick = () => {
+                  if (!savingBookmarks && confirm(`刪除書籤「${e.name}」？`)) commitBookmarks(bookmarks.filter(marker => marker.id !== e.id));
+              };
+              marker.append(handle, name, rename, remove);
+              marker.ondragstart = event => {
+                  if (savingBookmarks || event.target.closest('button')) { event.preventDefault(); return; }
+                  draggedBookmarkId = e.id;
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', e.id);
+                  marker.classList.add('dragging');
+              };
+              marker.ondragend = () => {
+                  draggedBookmarkId = null;
+                  marker.classList.remove('dragging');
+                  clearBookmarkDropIndicator();
+              };
+              tocList.appendChild(marker);
+              return;
+          }
           const a = document.createElement('a'); a.className = 'toc-item'; a.textContent = e.title;
+          a.href = `#entry-${e.id}`;
+          a.draggable = false;
           a.setAttribute('data-entry-id', e.id);
           if (e.id === currentFirstVisibleId) a.classList.add('active');
           a.onclick = (event) => { event.preventDefault(); const el = document.getElementById(`entry-${e.id}`); if (el) el.scrollIntoView({ behavior: 'smooth' }); };
           tocList.appendChild(a);
+      });
+      tocList.scrollTop = scrollTop;
+      updateBookmarkEdges();
+      scheduleBookmarkEdges();
+  }
+
+  function clearBookmarkDropIndicator() {
+      tocList.querySelectorAll('.bookmark-drop-before').forEach(row => row.classList.remove('bookmark-drop-before'));
+      tocList.classList.remove('bookmark-drop-end');
+  }
+
+  function bookmarkDropTarget(y) {
+      return Array.from(tocList.children).find(row => {
+          if (row.dataset.bookmarkId === draggedBookmarkId) return false;
+          const rect = row.getBoundingClientRect();
+          return y < rect.top + rect.height / 2;
       });
   }
 
@@ -487,6 +664,50 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function setupEventListeners() {
+    bookmarkTop.onclick = () => scrollToBookmark(bookmarkTop);
+    bookmarkBottom.onclick = () => scrollToBookmark(bookmarkBottom);
+    tocList.addEventListener('scroll', scheduleBookmarkEdges, { passive: true });
+    window.addEventListener('scroll', scheduleBookmarkEdges, { passive: true });
+    window.addEventListener('resize', scheduleBookmarkEdges);
+    // 視窗、字級及清單大小改變時，重新計算可視範圍。
+    const bookmarkResizeObserver = new ResizeObserver(scheduleBookmarkEdges);
+    bookmarkResizeObserver.observe(tocList);
+    bookmarkResizeObserver.observe(document.getElementById('sidebar'));
+    document.getElementById('addBookmarkBtn').onclick = () => {
+      if (savingBookmarks) return;
+      const name = prompt('書籤名稱', '新書籤');
+      if (!name?.trim()) return;
+      const beforeEntryId = visibleTOCEntries.some(entry => entry.id === currentFirstVisibleId)
+        ? currentFirstVisibleId : visibleTOCEntries[0]?.id || null;
+      commitBookmarks([...bookmarks, { id: crypto.randomUUID(), name: name.trim(), beforeEntryId }]);
+    };
+    tocList.addEventListener('dragover', event => {
+      if (!draggedBookmarkId || savingBookmarks) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      clearBookmarkDropIndicator();
+      const target = bookmarkDropTarget(event.clientY);
+      if (target) target.classList.add('bookmark-drop-before');
+      else tocList.classList.add('bookmark-drop-end');
+      const rect = tocList.getBoundingClientRect();
+      if (event.clientY < rect.top + 30) tocList.scrollTop -= 16;
+      else if (event.clientY > rect.bottom - 30) tocList.scrollTop += 16;
+    });
+    tocList.addEventListener('dragleave', event => {
+      if (!tocList.contains(event.relatedTarget)) clearBookmarkDropIndicator();
+    });
+    tocList.addEventListener('drop', event => {
+      if (!draggedBookmarkId || savingBookmarks) return;
+      event.preventDefault();
+      const target = bookmarkDropTarget(event.clientY);
+      const nextRow = target?.dataset.bookmarkId
+        ? { kind: 'bookmark', item: bookmarks.find(marker => marker.id === target.dataset.bookmarkId) }
+        : target ? { kind: 'entry', item: { id: target.getAttribute('data-entry-id') } } : null;
+      const next = moveBookmark(bookmarks, draggedBookmarkId, nextRow);
+      draggedBookmarkId = null;
+      clearBookmarkDropIndicator();
+      commitBookmarks(next);
+    });
     fontSizeUp.onclick = () => changeFontSize(1);
     fontSizeDown.onclick = () => changeFontSize(-1);
     toggleCommonUrls.onclick = () => {
@@ -555,7 +776,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     importInput.onchange = async (e) => {
       const file = e.target.files[0]; if (!file) return;
       const reader = new FileReader();
-      reader.onload = async (event) => { try { const data = JSON.parse(event.target.result); if (data.mediaEntries) { await chrome.storage.local.set(data); location.reload(); } } catch (err) { alert('檔案格式錯誤'); } };
+      reader.onload = async (event) => { try { const data = JSON.parse(event.target.result); if (data.mediaEntries) { await chrome.storage.local.set({ ...data, bookmarks: Array.isArray(data.bookmarks) ? data.bookmarks : [] }); location.reload(); } } catch (err) { alert('檔案格式錯誤'); } };
       reader.readAsText(file);
     };
     addEntryBtn.onclick = () => {
@@ -750,6 +971,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const data = await Storage.getData();
       allEntries = data.mediaEntries || [];
+      bookmarks = (data.bookmarks || []).filter(marker => marker && typeof marker.id === 'string' && typeof marker.name === 'string');
       commonUrls = data.commonUrls || { novel: [], comic: [], anime: [] };
       masterTags = data.tags || [];
       masterMediums = data.mediums || [];

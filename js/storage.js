@@ -1,14 +1,15 @@
 const Storage = {
   async getData() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(['mediaEntries', 'commonUrls', 'domainMaps', 'settings', 'tags', 'mediums'], (result) => {
+      chrome.storage.local.get(['mediaEntries', 'commonUrls', 'domainMaps', 'settings', 'tags', 'mediums', 'bookmarks'], (result) => {
         resolve({
           mediaEntries: result.mediaEntries || [],
           commonUrls: result.commonUrls || { novel: [], comic: [], anime: [] },
           domainMaps: result.domainMaps || {},
           settings: result.settings || { fontSize: 14 },
           tags: result.tags || [],
-          mediums: result.mediums || []
+          mediums: result.mediums || [],
+          bookmarks: Array.isArray(result.bookmarks) ? result.bookmarks : []
         });
       });
     });
@@ -17,6 +18,10 @@ const Storage = {
   async getAll() {
     const data = await this.getData();
     return data.mediaEntries;
+  },
+
+  async saveBookmarks(bookmarks) {
+    await chrome.storage.local.set({ bookmarks });
   },
 
   async save(entries) {
