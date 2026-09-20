@@ -218,6 +218,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (activeFilters.tags.length > 0) filtered = filtered.filter(e => activeFilters.tags.every(t => (e.tags || []).includes(t)));
 
     entryCountEl.textContent = filtered.length;
+    entryObserver.disconnect();
+    intersectingIds.clear();
+    currentFirstVisibleId = null;
     entryList.innerHTML = '';
     
     filtered.forEach(entry => {
@@ -252,6 +255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           sortedP.forEach(p => {
             const li = document.createElement('li');
             if (p.desc === '第 N 話') li.innerHTML = formatDisplay(`第 ${p.val} 話`);
+            else if (p.desc === '第 N 集') li.innerHTML = formatDisplay(`第 ${p.val} 集`);
             else if (p.desc === '第 N 季') { const parts = p.val.split(','); li.innerHTML = formatDisplay(`第 ${parts[0] || '?'} 季${parts[1] ? ' 第 ' + parts[1] + ' 集' : ''}`); }
             else li.innerHTML = formatDisplay(p.desc + (p.val ? '：' + p.val : ''));
             ul.appendChild(li);
@@ -436,13 +440,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function getFormState() {
-      const formData = new FormData(entryForm);
-      let state = "";
-      for (let [key, value] of formData.entries()) { state += `${key}:${value}|`; }
-      // 動態欄位手動加入
-      document.querySelectorAll('.progress-row input, .u-desc, .u-url, #other-names-inputs input, #f-tags-inputs input').forEach(i => state += i.value + ";");
-      state += document.getElementById('f-related').value + document.getElementById('f-notes').value + document.getElementById('f-thoughts').value;
-      return state;
+      // 欄位沒有 name，FormData 不會收錄；使用結構化快照避免內容串接碰撞。
+      return JSON.stringify(Array.from(entryForm.querySelectorAll('input, textarea, select'))
+        .filter(input => !input.classList.contains('hidden-date-picker'))
+        .map(input => [input.id, input.className, input.value]));
   }
 
   function openModal() {
@@ -615,7 +616,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
     });
-    entryList.addEventListener('dragover', (e) => { e.preventDefault(); const afterElement = getDragAfterElement(entryList, e.clientY, '.entry'); if (afterElement == null) entryList.appendChild(draggedItem); else entryList.insertBefore(draggedItem, afterElement); });
+    entryList.addEventListener('dragover', (e) => { if (!draggedItem) return; e.preventDefault(); const afterElement = getDragAfterElement(entryList, e.clientY, '.entry'); if (afterElement == null) entryList.appendChild(draggedItem); else entryList.insertBefore(draggedItem, afterElement); });
 
     let draggedCommonItem = null;
     ['novel', 'comic', 'anime'].forEach(m => {
@@ -651,11 +652,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     const div = document.createElement('div'); div.className = 'row input-item-row progress-row';
     const isSeason = desc === '第 N 季';
     let sVal = '', eVal = val;
-    if (isSeason && val.includes(',')) { const parts = val.split(','); sVal = parts[0]; eVal = parts[1] || ''; }
+    if (isSeason) { const parts = val.split(','); sVal = parts[0]; eVal = parts[1] || ''; }
     div.innerHTML = `<input type="text" class="p-desc" list="${category}-prog-desc" placeholder="說明" value="${desc}"><div class="p-val-container" style="flex:1; display:flex; gap:5px; align-items:center;">${isSeason ? `<input type="text" class="p-season" placeholder="季" value="${sVal}" style="width:50px;"> 季 <input type="text" class="p-episode" placeholder="集" value="${eVal}" style="width:50px;"> 集` : `<input type="text" class="p-val" placeholder="進度" value="${val}" style="flex:1;">`}</div><button type="button" class="remove-url-btn">×</button>`;
     const descInput = div.querySelector('.p-desc'); const valContainer = div.querySelector('.p-val-container');
     descInput.onmousedown = () => { if(descInput.value) { const v = descInput.value; descInput.value = ''; setTimeout(() => descInput.value = v, 1); } };
-    descInput.oninput = () => { if (descInput.value.trim() === '第 N 季') valContainer.innerHTML = `<input type="text" class="p-season" placeholder="季" style="width:50px;"> 季 <input type="text" class="p-episode" placeholder="集" style="width:50px;"> 集`; else valContainer.innerHTML = `<input type="text" class="p-val" placeholder="進度" style="flex:1;">`; };
+    descInput.oninput = () => {
+      const seasonInput = valContainer.querySelector('.p-season');
+      const wantsSeason = descInput.value.trim() === '第 N 季';
+      if (wantsSeason === Boolean(seasonInput)) return;
+      if (wantsSeason) {
+        const value = valContainer.querySelector('.p-val').value;
+        valContainer.innerHTML = `<input type="text" class="p-season" placeholder="季" style="width:50px;"> 季 <input type="text" class="p-episode" placeholder="集" style="width:50px;"> 集`;
+        const parts = value.split(',');
+        valContainer.querySelector('.p-season').value = parts.length > 1 ? parts[0] : '';
+        valContainer.querySelector('.p-episode').value = parts.length > 1 ? parts[1] : value;
+      } else {
+        const season = seasonInput.value;
+        const episode = valContainer.querySelector('.p-episode').value;
+        valContainer.innerHTML = `<input type="text" class="p-val" placeholder="進度" style="flex:1;">`;
+        valContainer.querySelector('.p-val').value = season ? `${season},${episode}` : episode;
+      }
+    };
     div.querySelector('.remove-url-btn').onclick = () => div.remove(); container.appendChild(div);
   }
 
@@ -762,11 +779,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const picker = document.getElementById(pickerId);
     if (textInput && picker) {
       const setDefaultDate = () => {
-        const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
-        picker.value = `${yyyy}-${mm}-${dd}`;
+        // 保持未選取，選今天時才會產生 input/change 事件。
+        picker.value = '';
       };
 
       const syncValue = () => {
